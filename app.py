@@ -16,7 +16,7 @@ APP_DIR = Path(__file__).parent
 # Your reports live inside the repo here:
 # repo/
 #   data/Amazon Reports/Weekly Reports/<Client>/<Week|Month|Year>/...
-DATA_DIR = APP_DIR / "data" / "Amazon Reports" / "Weekly Reports"
+DATA_DIR = BASE_DIR / "data" / "Amazon Reports" / "Weekly Uploads"
 
 REPORT_EXTS = {".csv", ".xls", ".xlsx", ".xlsm"}
 
