@@ -1,18 +1,28 @@
 from pathlib import Path
+from datetime import date, datetime, timedelta
+import re
+import csv
+from typing import List, Optional, Tuple
 
-# Always points to the folder where app.py lives (repo root in Streamlit Cloud)
+import pandas as pd
+import streamlit as st
+
+# ------------------------------------------------------------------
+# Base paths (works locally + on Streamlit Cloud)
+# ------------------------------------------------------------------
 BASE_DIR = Path(__file__).parent
 
-# Data folder inside the repo
+# ✅ Your repo data folder path (matches your actual repo structure)
+# data/Amazon Reports/Weekly Uploads/<CLIENT>/...
 DATA_DIR = BASE_DIR / "data" / "Amazon Reports" / "Weekly Uploads"
 
-# Allowed report extensions
 REPORT_EXTS = {".csv", ".xls", ".xlsx", ".xlsm"}
-
-# Logo path
 LOGO_PATH = BASE_DIR / "logo.png"
 
-# ✅ UPDATED CLIENT LIST (removed: Vico, AKT Products, UTV, TapMed, Kul Mocks, Eloquest/Eloquent)
+# ✅ cap at Feb 1, 2026
+WTD_MAX_WEEK_ENDING = date(2026, 2, 1)
+
+# ✅ UPDATED CLIENT LIST
 CLIENTS = [
     "BISI",
     "DLP",
@@ -23,14 +33,8 @@ CLIENTS = [
     "Rooted",
 ]
 
-# -------------------------
-# WTD cutoff (cap the 6-week breakdown)
-# ✅ cap at Feb 1, 2026
-# -------------------------
-WTD_MAX_WEEK_ENDING = date(2026, 2, 1)
-
 # =============================================================================
-# LISTING METRICS TRIGGERS (matches your screenshot concept)
+# LISTING METRICS TRIGGERS
 # =============================================================================
 SALES_DROP_PCT_TRIGGER = 0.30
 TRAFFIC_DROP_PCT_TRIGGER = 0.25
