@@ -1,19 +1,27 @@
-from pathlib import Path
 import csv
 import re
-from datetime import datetime, timedelta, date
-from typing import Optional, List, Tuple
+from pathlib import Path
+from typing import List, Optional, Tuple
+from datetime import datetime, date, timedelta
 
 import pandas as pd
 import streamlit as st
 
-# =============================================================================
-# CONFIG
-# =============================================================================
-st.set_page_config(page_title="Client Dashboard", layout="wide")
 
-BASE_DIR = Path("/Users/angiemonserrate/Documents/BarrelEdge/Monday Reports/Amazon Reports/Weekly Uploads")
+# =============================================================================
+# PATHS (✅ DEPLOY-SAFE)
+# =============================================================================
+APP_DIR = Path(__file__).parent
+
+# Your reports live inside the repo here:
+# repo/
+#   data/Amazon Reports/Weekly Reports/<Client>/<Week|Month|Year>/...
+DATA_DIR = APP_DIR / "data" / "Amazon Reports" / "Weekly Reports"
+
 REPORT_EXTS = {".csv", ".xls", ".xlsx", ".xlsm"}
+
+LOGO_PATH = APP_DIR / "logo.png"
+
 
 # ✅ UPDATED CLIENT LIST (removed: Vico, AKT Products, UTV, TapMed, Kul Mocks, Eloquest/Eloquent)
 CLIENTS = [
@@ -25,9 +33,6 @@ CLIENTS = [
     "NP",
     "Rooted",
 ]
-
-APP_DIR = Path(__file__).parent
-LOGO_PATH = APP_DIR / "logo.png"
 
 # -------------------------
 # WTD cutoff (cap the 6-week breakdown)
@@ -210,7 +215,7 @@ def _pct_to_float(val):
 
 
 def fmt_pct0(val) -> str:
-    """Normalize any percent-ish value (e.g. '12.34%', 0.1234, '-5.6%') to '12%', '-6%', etc."""
+    """Normalize any percent-ish value to '12%', '-6%', etc."""
     if val is None:
         return ""
     s = str(val).strip()
@@ -226,7 +231,6 @@ def fmt_pct0(val) -> str:
 
 # =============================================================================
 # COLOR STYLING — ONLY PERCENT COLUMNS
-# Red = negative, Green = positive
 # =============================================================================
 def _colorize_pct(v):
     p = _pct_to_float(v)
@@ -251,7 +255,6 @@ def style_percent_columns(df: pd.DataFrame, cols: List[str]):
 # YTD/MTD EXTRACTION (your existing CSV logic)
 # =============================================================================
 def _parse_pct_cell(raw):
-    # ✅ changed to NO decimals
     if raw is None:
         return ""
     s = str(raw).strip()
@@ -335,7 +338,7 @@ def extract_compare_table_view_through(rows, period_kind: str):
     prev = parse_currency_only(prev_row[col_sales]) if col_sales < len(prev_row) else None
     pct_str = ""
     if pct_row is not None and col_sales < len(pct_row):
-        pct_str = _parse_pct_cell(pct_row[col_sales])  # ✅ already normalized
+        pct_str = _parse_pct_cell(pct_row[col_sales])
 
     return cur, prev, pct_str, {"reason": "Extracted from Table view (through rows)"}
 
@@ -399,8 +402,11 @@ def extract_compare_graph_view_money(rows, this_col_options, last_col_options):
     return cur, prev, {"reason": "Graph view money"}
 
 
+# =============================================================================
+# ✅ UPDATED: ALL CLIENT PATHS USE DATA_DIR (NOT YOUR LAPTOP)
+# =============================================================================
 def get_ytd_for_client(client: str):
-    folder = BASE_DIR / client / "Year"
+    folder = DATA_DIR / client / "Year"
     fp = latest_report_file(folder)
     if not fp:
         return None, None, "", {"reason": "No Year file found", "file": None}
@@ -418,7 +424,7 @@ def get_ytd_for_client(client: str):
 
 
 def get_mtd_for_client(client: str):
-    folder = BASE_DIR / client / "Month"
+    folder = DATA_DIR / client / "Month"
     fp = latest_report_file(folder)
     if not fp:
         return None, None, "", {"reason": "No Month file found", "file": None}
@@ -507,7 +513,7 @@ def extract_daily_sales_timeseries(rows):
 
 
 def get_wtd_last_6_weeks_for_client(client: str, n_weeks=6, max_week_ending: Optional[date] = None):
-    folder = BASE_DIR / client / "Week"
+    folder = DATA_DIR / client / "Week"
     fp = latest_report_file(folder)
     if not fp:
         return pd.DataFrame(columns=["Week of", "WTD 2026", "WTD 2025", "Year over Year"]), {"reason": "No Week file found", "file": None}
@@ -539,7 +545,7 @@ def get_wtd_last_6_weeks_for_client(client: str, n_weeks=6, max_week_ending: Opt
         last_val = float(r["sales_last"])
         yoy = ""
         if last_val != 0:
-            yoy = f"{((this_val - last_val) / last_val):.0%}"  # ✅ already no decimals
+            yoy = f"{((this_val - last_val) / last_val):.0%}"
 
         out.append({
             "Week of": pd.to_datetime(r["week_of"]).strftime("%d-%b"),
@@ -601,7 +607,7 @@ def _find_detail_folder(client_folder: Path):
 
 
 def _read_detail_sales_traffic_raw(client: str) -> pd.DataFrame:
-    client_folder = BASE_DIR / client
+    client_folder = DATA_DIR / client
     detail_folder = _find_detail_folder(client_folder)
     if not detail_folder:
         return pd.DataFrame()
@@ -832,7 +838,7 @@ def _read_any_table(fp: Path) -> pd.DataFrame:
 
 
 def get_seller_health_history_for_client(client: str) -> pd.DataFrame:
-    client_folder = BASE_DIR / client
+    client_folder = DATA_DIR / client
     folders = _find_possible_seller_health_folders(client_folder)
     if not folders:
         return pd.DataFrame(columns=["Date", "Account Health", "Suppressed listings", "Seller Feedback"])
@@ -926,7 +932,7 @@ def render_client_summary():
             "This year so far": fmt_currency(cur),
             "Last year": fmt_currency(prev),
             "Difference": fmt_diff(diff),
-            "Difference %": fmt_pct0(pct_from_report if pct_from_report else fallback_pct),  # ✅ no decimals
+            "Difference %": fmt_pct0(pct_from_report if pct_from_report else fallback_pct),
         })
     ytd_df = pd.DataFrame(ytd_rows)
     st.dataframe(style_percent_columns(ytd_df, ["Difference %"]), use_container_width=True)
@@ -943,7 +949,7 @@ def render_client_summary():
             "This month so far": fmt_currency(cur),
             "Last month": fmt_currency(prev),
             "Difference": fmt_diff(diff),
-            "Difference %": fmt_pct0(pct_from_report if pct_from_report else fallback_pct),  # ✅ no decimals
+            "Difference %": fmt_pct0(pct_from_report if pct_from_report else fallback_pct),
         })
     mtd_df = pd.DataFrame(mtd_rows)
     st.dataframe(style_percent_columns(mtd_df, ["Difference %"]), use_container_width=True)
@@ -957,7 +963,6 @@ def render_client_summary():
         if wtd_df.empty:
             st.info("No Week report found yet.")
         else:
-            # Year over Year is already .0% in generator
             st.dataframe(style_percent_columns(wtd_df, ["Year over Year"]), use_container_width=True)
         st.write("")
 
@@ -1059,7 +1064,6 @@ def _df_to_html_table(df: pd.DataFrame, pct_cols: Optional[List[str]] = None) ->
 
 
 def build_static_clickable_dashboard_html() -> str:
-    # Client Summary data
     ytd_rows = []
     for c in CLIENTS:
         cur, prev, pct_from_report, _ = get_ytd_for_client(c)
@@ -1069,7 +1073,7 @@ def build_static_clickable_dashboard_html() -> str:
             "This year so far": fmt_currency(cur),
             "Last year": fmt_currency(prev),
             "Difference": fmt_diff(diff),
-            "Difference %": fmt_pct0(pct_from_report if pct_from_report else fallback_pct),  # ✅
+            "Difference %": fmt_pct0(pct_from_report if pct_from_report else fallback_pct),
         })
     ytd_df = pd.DataFrame(ytd_rows)
 
@@ -1082,7 +1086,7 @@ def build_static_clickable_dashboard_html() -> str:
             "This month so far": fmt_currency(cur),
             "Last month": fmt_currency(prev),
             "Difference": fmt_diff(diff),
-            "Difference %": fmt_pct0(pct_from_report if pct_from_report else fallback_pct),  # ✅
+            "Difference %": fmt_pct0(pct_from_report if pct_from_report else fallback_pct),
         })
     mtd_df = pd.DataFrame(mtd_rows)
 
@@ -1143,7 +1147,7 @@ def build_static_clickable_dashboard_html() -> str:
             "This year so far": fmt_currency(cur),
             "Last year": fmt_currency(prev),
             "Difference": fmt_diff(diff),
-            "Diff %": fmt_pct0(pct_from_report if pct_from_report else fallback_pct),  # ✅
+            "Diff %": fmt_pct0(pct_from_report if pct_from_report else fallback_pct),
         }])
 
         cur, prev, pct_from_report, _ = get_mtd_for_client(c)
@@ -1152,7 +1156,7 @@ def build_static_clickable_dashboard_html() -> str:
             "This month so far": fmt_currency(cur),
             "Last month": fmt_currency(prev),
             "Difference": fmt_diff(diff),
-            "Diff %": fmt_pct0(pct_from_report if pct_from_report else fallback_pct),  # ✅
+            "Diff %": fmt_pct0(pct_from_report if pct_from_report else fallback_pct),
         }])
 
         wtd_df, _ = get_wtd_last_6_weeks_for_client(c, n_weeks=6, max_week_ending=WTD_MAX_WEEK_ENDING)
@@ -1182,6 +1186,7 @@ def build_static_clickable_dashboard_html() -> str:
 
     logo_html = ""
     if LOGO_PATH.exists():
+        # NOTE: This is fine for download HTML; for web-hosted HTML you'd want base64 or a relative public path.
         logo_html = f"<img class='logo' src='{_html_escape(str(LOGO_PATH))}' />"
 
     html = f"""
