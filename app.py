@@ -1,27 +1,16 @@
-import csv
-import re
 from pathlib import Path
-from typing import List, Optional, Tuple
-from datetime import datetime, date, timedelta
 
-import pandas as pd
-import streamlit as st
+# Always points to the folder where app.py lives (repo root in Streamlit Cloud)
+BASE_DIR = Path(__file__).parent
 
-
-# =============================================================================
-# PATHS (✅ DEPLOY-SAFE)
-# =============================================================================
-APP_DIR = Path(__file__).parent
-
-# Your reports live inside the repo here:
-# repo/
-#   data/Amazon Reports/Weekly Reports/<Client>/<Week|Month|Year>/...
+# Data folder inside the repo
 DATA_DIR = BASE_DIR / "data" / "Amazon Reports" / "Weekly Uploads"
 
+# Allowed report extensions
 REPORT_EXTS = {".csv", ".xls", ".xlsx", ".xlsm"}
 
-LOGO_PATH = APP_DIR / "logo.png"
-
+# Logo path
+LOGO_PATH = BASE_DIR / "logo.png"
 
 # ✅ UPDATED CLIENT LIST (removed: Vico, AKT Products, UTV, TapMed, Kul Mocks, Eloquest/Eloquent)
 CLIENTS = [
