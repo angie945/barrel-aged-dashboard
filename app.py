@@ -8,16 +8,28 @@ from typing import List, Optional, Tuple
 import pandas as pd
 import streamlit as st
 
-# ✅ Visible deploy marker so you know Streamlit is running the latest file
-st.markdown("### ✅ DEPLOY CHECK: app.py updated (DATA_DIR + Detail Sales & Traffic + safe pandas styling)")
-st.caption(f"Running from: {__file__}")
+# ------------------------------------------------------------------
+# ✅ AESTHETICS: center metric numbers + labels
+# ------------------------------------------------------------------
+st.markdown(
+    """
+    <style>
+      /* Center Streamlit metric blocks (value + delta + label) */
+      [data-testid="stMetric"] { text-align: center; }
+      [data-testid="stMetricValue"] { justify-content: center; }
+      [data-testid="stMetricDelta"] { justify-content: center; }
+      [data-testid="stMetricLabel"] { justify-content: center; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 # ------------------------------------------------------------------
 # Base paths (works locally + on Streamlit Cloud)
 # ------------------------------------------------------------------
 BASE_DIR = Path(__file__).parent
 
-# ✅ Repo data folder path:
+# ✅ Your repo data folder path (matches your actual repo structure)
 # data/Amazon Reports/Weekly Uploads/<CLIENT>/...
 DATA_DIR = BASE_DIR / "data" / "Amazon Reports" / "Weekly Uploads"
 
@@ -73,6 +85,7 @@ _money_re = re.compile(r"\$?\s*([0-9,]+(?:\.[0-9]{1,2})?)")
 _date_re = re.compile(r"(\d{4}-\d{2}-\d{2})")
 _date_re2 = re.compile(r"(\d{2}-\d{2}-\d{4})")
 _date_re3 = re.compile(r"(\d{1,2}/\d{1,2}/\d{2,4})")
+
 
 # =============================================================================
 # BASIC HELPERS
@@ -188,6 +201,7 @@ def diff_pct(cur, prev):
         return diff, "#DIV/0!"
     return diff, f"{diff / prev:.0%}"  # no decimals
 
+
 # =============================================================================
 # PERCENT PARSING + NORMALIZATION (force NO decimals everywhere)
 # =============================================================================
@@ -225,6 +239,7 @@ def fmt_pct0(val) -> str:
         return s
     return f"{p:.0%}"
 
+
 # =============================================================================
 # COLOR STYLING — ONLY PERCENT COLUMNS
 # =============================================================================
@@ -245,6 +260,7 @@ def style_percent_columns(df: pd.DataFrame, cols: List[str]):
         if c in df.columns:
             styler = styler.applymap(_colorize_pct, subset=[c])
     return styler
+
 
 # =============================================================================
 # YTD/MTD EXTRACTION (CSV logic)
@@ -396,6 +412,7 @@ def extract_compare_graph_view_money(rows, this_col_options, last_col_options):
     prev = parse_currency_only(data_row[col_last]) if col_last < len(data_row) else None
     return cur, prev, {"reason": "Graph view money"}
 
+
 # =============================================================================
 # YTD / MTD (paths use DATA_DIR)
 # =============================================================================
@@ -433,6 +450,7 @@ def get_mtd_for_client(client: str):
     MTD_LAST = ["Last month (Ordered product sales)", "Last month"]
     cur2, prev2, dbg2 = extract_compare_graph_view_money(rows, MTD_THIS, MTD_LAST)
     return cur2, prev2, "", {"file": str(fp), "source": "graph_view_money", **dbg2}
+
 
 # =============================================================================
 # WTD (last 6 weeks) — capped
@@ -553,8 +571,9 @@ def get_wtd_last_6_weeks_for_client(client: str, n_weeks=6, max_week_ending: Opt
 
     return pd.DataFrame(out), {"file": str(fp), **dbg}
 
+
 # =============================================================================
-# DETAIL SALES & TRAFFIC (Excel) — used by Listing Metrics + tables
+# DETAIL SALES & TRAFFIC (Excel) — used by Listing Metrics + Client Summary table
 # =============================================================================
 def _clean_col(c: str) -> str:
     return re.sub(r"\s+", " ", str(c).strip())
@@ -660,8 +679,9 @@ def get_detail_metrics_daily(client: str) -> pd.DataFrame:
 
     return out
 
+
 # =============================================================================
-# ✅ DETAIL SALES & TRAFFIC TABLE (matches your screenshot layout)
+# ✅ DETAIL SALES & TRAFFIC TABLE (screenshot-style)
 # =============================================================================
 def _find_first_col(df: pd.DataFrame, substrings: List[str]) -> Optional[str]:
     for c in df.columns:
@@ -677,9 +697,7 @@ def get_detail_sales_traffic_table(client: str) -> pd.DataFrame:
         return pd.DataFrame()
 
     col_date = "Date" if "Date" in df.columns else _find_first_col(df, ["date"])
-    col_asin = "(Parent) ASIN" if "(Parent) ASIN" in df.columns else (
-        "ASIN" if "ASIN" in df.columns else _find_first_col(df, ["asin"])
-    )
+    col_asin = "(Parent) ASIN" if "(Parent) ASIN" in df.columns else ("ASIN" if "ASIN" in df.columns else _find_first_col(df, ["asin"]))
 
     col_sessions = _find_first_col(df, ["session total", "sessions"])
     col_pageviews = _find_first_col(df, ["page views - total", "page views total", "pageviews - total", "page views", "pageviews"])
@@ -762,62 +780,42 @@ def build_asin_grouped_display(df: pd.DataFrame) -> pd.DataFrame:
     return out[cols]
 
 
+# ✅ AESTHETICS: remove the "Data source" debug expander everywhere
 def debug_detail_sales_traffic(client: str):
-    with st.expander("Data source (latest file detected)", expanded=False):
-        client_folder = DATA_DIR / client
-        detail_folder = client_folder / DETAIL_SALES_TRAFFIC_FOLDER
-        st.write("BASE_DIR:", str(BASE_DIR.resolve()))
-        st.write("DATA_DIR:", str(DATA_DIR.resolve()))
-        st.write("Client folder exists:", client_folder.exists(), str(client_folder))
-        st.write("Detail folder exists:", detail_folder.exists(), str(detail_folder))
-
-        fp = latest_report_file(detail_folder) if detail_folder.exists() else None
-        st.write("Latest file:", fp.name if fp else "None")
+    return
 
 
-def _render_detail_sales_traffic_table(df: pd.DataFrame):
-    """
-    Renders the grouped ASIN table using styling that works on older pandas
-    (NO Styler.hide(columns=...)).
-    """
-    if df is None or df.empty:
+def render_detail_sales_traffic_for_client(client: str):
+    df = get_detail_sales_traffic_table(client)
+    if df.empty:
         st.info("No Detail Sales & Traffic report found for this client yet.")
         return
 
     display = build_asin_grouped_display(df)
-    if display.empty or "__row_type" not in display.columns:
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        return
 
-    # ✅ SAFE: don't use Styler.hide (not supported on older pandas in Streamlit Cloud)
-    row_type = display["__row_type"].tolist()
-    display_view = display.drop(columns=["__row_type"])
+    # Safer than Styler.hide(...) across pandas versions:
+    # - compute which rows are ASIN headers
+    # - drop __row_type before styling/display
+    asin_mask = display["__row_type"].astype(str).eq("asin")
+    display_clean = display.drop(columns=["__row_type"])
 
-    def style_rows_safe(row):
-        if row_type[row.name] == "asin":
-            return ["font-weight: 700; border-top: 2px solid #2f5f78; background: #ffffff;" for _ in row.index]
+    def style_rows(row):
+        is_asin = bool(asin_mask.loc[row.name]) if row.name in asin_mask.index else False
+        if is_asin:
+            return [
+                "font-weight: 700; border-top: 2px solid #2f5f78; background: #ffffff;"
+                for _ in row.index
+            ]
         return ["" for _ in row.index]
 
     styler = (
-        display_view.style
-        .apply(style_rows_safe, axis=1)
+        display_clean.style
+        .apply(style_rows, axis=1)
         .set_properties(subset=["ASIN"], **{"white-space": "pre"})
     )
 
     st.dataframe(styler, use_container_width=True, hide_index=True)
 
-
-def render_detail_sales_traffic_for_client(client: str):
-    df = get_detail_sales_traffic_table(client)
-    _render_detail_sales_traffic_table(df)
-
-
-def render_detail_sales_traffic_section(client: str, show_debug: bool = False):
-    st.subheader("DETAIL SALES & TRAFFIC")
-    if show_debug:
-        debug_detail_sales_traffic(client)
-    df = get_detail_sales_traffic_table(client)
-    _render_detail_sales_traffic_table(df)
 
 # =============================================================================
 # LISTING METRICS: SUMMARY + BREAKDOWN
@@ -970,6 +968,7 @@ def render_listing_metrics_tracker():
         use_container_width=True,
     )
 
+
 # =============================================================================
 # SELLER HEALTH
 # =============================================================================
@@ -1075,6 +1074,7 @@ def get_seller_health_history_for_client(client: str) -> pd.DataFrame:
     out["Date"] = out["Date"].dt.strftime("%Y-%m-%d")
     return out
 
+
 # =============================================================================
 # PAGES
 # =============================================================================
@@ -1138,20 +1138,23 @@ def render_client_summary():
     st.divider()
     st.header("DETAIL SALES & TRAFFIC")
 
-    client_for_detail = st.selectbox(
-        "Select client for Detail Sales & Traffic",
+    # ✅ AESTHETICS: client dropdown in left sidebar (not top)
+    client_for_detail = st.sidebar.selectbox(
+        "Detail Sales & Traffic Client",
         CLIENTS,
         index=0,
-        key="detail_client_summary",
+        key="sidebar_client_detail_summary",
     )
 
-    debug_detail_sales_traffic(client_for_detail)
+    debug_detail_sales_traffic(client_for_detail)  # does nothing now
     render_detail_sales_traffic_for_client(client_for_detail)
 
 
 def render_client_pages():
     st.header("Client Pages")
-    client = st.selectbox("Select a client", CLIENTS, index=0)
+
+    # ✅ AESTHETICS: client dropdown in left sidebar (not top)
+    client = st.sidebar.selectbox("Client", CLIENTS, index=0, key="sidebar_client_pages")
 
     c1, c2 = st.columns(2)
     with c1:
@@ -1181,14 +1184,17 @@ def render_client_pages():
     else:
         st.dataframe(style_percent_columns(wtd_df, ["Year over Year"]), use_container_width=True)
 
-    # ✅ THIS is the missing table under WTD on Client Pages
+    # ✅ Add Detail Sales & Traffic table under WTD (as requested earlier)
     st.divider()
-    render_detail_sales_traffic_section(client, show_debug=False)
+    st.subheader("Detail Sales & Traffic")
+    render_detail_sales_traffic_for_client(client)
 
 
 def render_seller_health():
     st.header("Seller Health")
-    client = st.selectbox("Client", CLIENTS, index=0)
+
+    # ✅ AESTHETICS: client dropdown in left sidebar (not top)
+    client = st.sidebar.selectbox("Client", CLIENTS, index=0, key="sidebar_client_seller")
 
     hist = get_seller_health_history_for_client(client)
     if hist.empty:
@@ -1199,6 +1205,7 @@ def render_seller_health():
         return
 
     st.dataframe(hist, use_container_width=True, hide_index=True)
+
 
 # =============================================================================
 # STATIC HTML DASHBOARD (tabs, no filters)
@@ -1382,8 +1389,6 @@ def build_static_clickable_dashboard_html() -> str:
             </div>
             <h3>WTD (Last 6 Weeks)</h3>
             {_df_to_html_table(wtd_df, pct_cols=["Year over Year"]) if not wtd_df.empty else "<p class='muted'>No Week report found yet.</p>"}
-            <h3>Detail Sales &amp; Traffic</h3>
-            <p class="muted">Static snapshot. Grouped rendering is Streamlit-only.</p>
           </div>
         """
         )
@@ -1583,6 +1588,7 @@ def build_static_clickable_dashboard_html() -> str:
     """.strip()
 
     return html
+
 
 # =============================================================================
 # SIDEBAR NAV + EXPORTS
