@@ -8,10 +8,7 @@ from typing import List, Optional, Tuple
 import pandas as pd
 import streamlit as st
 
-# =============================================================================
-# ✅ DEPLOY CHECK (helps confirm Streamlit Cloud is running THIS code)
-# =============================================================================
-st.markdown("### ✅ DEPLOY CHECK: app.py updated (uses DATA_DIR + robust Detail Sales & Traffic folder detection)")
+st.markdown("### ✅ DEPLOY CHECK: app.py updated (Detail Sales & Traffic uses DATA_DIR + recursive file search)")
 st.caption(f"Running from: {__file__}")
 
 # ------------------------------------------------------------------
@@ -19,7 +16,7 @@ st.caption(f"Running from: {__file__}")
 # ------------------------------------------------------------------
 BASE_DIR = Path(__file__).parent
 
-# ✅ Repo data folder path (matches your repo screenshot)
+# ✅ Your repo data folder path (matches your actual repo structure)
 # data/Amazon Reports/Weekly Uploads/<CLIENT>/...
 DATA_DIR = BASE_DIR / "data" / "Amazon Reports" / "Weekly Uploads"
 
@@ -29,13 +26,8 @@ LOGO_PATH = BASE_DIR / "logo.png"
 # ✅ cap at Feb 1, 2026
 WTD_MAX_WEEK_ENDING = date(2026, 2, 1)
 
-# ✅ Folder name variants (Linux on Streamlit Cloud is case-sensitive)
-DETAIL_SALES_TRAFFIC_FOLDER_CANDIDATES = [
-    "Detail Sales & Traffic",
-    "DETAIL SALES & TRAFFIC",
-    "Detail Sales and Traffic",
-    "DETAIL SALES AND TRAFFIC",
-]
+# ✅ Folder name exactly as it exists in GitHub (per your screenshot)
+DETAIL_SALES_TRAFFIC_FOLDER = "Detail Sales & Traffic"
 
 # ✅ UPDATED CLIENT LIST
 CLIENTS = [
@@ -83,27 +75,32 @@ _date_re3 = re.compile(r"(\d{1,2}/\d{1,2}/\d{2,4})")
 
 
 # =============================================================================
-# BASIC HELPERS
+# BASIC HELPERS (✅ UPDATED: recursive file discovery)
 # =============================================================================
-def latest_report_file(folder: Optional[Path]) -> Optional[Path]:
-    if not folder or not folder.exists():
-        return None
-    files = [
-        f
-        for f in folder.iterdir()
-        if f.is_file() and f.suffix.lower() in REPORT_EXTS and not f.name.startswith("~$")
-    ]
-    return max(files, key=lambda f: f.stat().st_mtime) if files else None
-
-
-def list_report_files(folder: Path) -> List[Path]:
+def _iter_report_files(folder: Path) -> List[Path]:
+    """
+    ✅ Find report files recursively (handles subfolders).
+    Streamlit Cloud repo often has extra nesting; this prevents false 'no file found'.
+    """
     if not folder or not folder.exists():
         return []
     files = [
         f
-        for f in folder.iterdir()
-        if f.is_file() and f.suffix.lower() in REPORT_EXTS and not f.name.startswith("~$")
+        for f in folder.rglob("*")
+        if f.is_file()
+        and f.suffix.lower() in REPORT_EXTS
+        and not f.name.startswith("~$")
     ]
+    return files
+
+
+def latest_report_file(folder: Path):
+    files = _iter_report_files(folder)
+    return max(files, key=lambda f: f.stat().st_mtime) if files else None
+
+
+def list_report_files(folder: Path) -> List[Path]:
+    files = _iter_report_files(folder)
     return sorted(files, key=lambda f: f.stat().st_mtime)
 
 
@@ -607,29 +604,11 @@ def _to_int(x):
 
 def _find_detail_folder(client_folder: Path) -> Optional[Path]:
     """
-    Robust folder detection for:
-      data/.../<CLIENT>/Detail Sales & Traffic/
-    Supports name variants + case-insensitive fallback.
+    Exact folder name (per GitHub screenshot):
+    data/.../<CLIENT>/Detail Sales & Traffic/
     """
-    if not client_folder.exists():
-        return None
-
-    # 1) direct candidate matches
-    for name in DETAIL_SALES_TRAFFIC_FOLDER_CANDIDATES:
-        p = client_folder / name
-        if p.exists() and p.is_dir():
-            return p
-
-    # 2) case-insensitive fallback scan
-    target_norms = {n.lower().replace("and", "&").replace(" ", "") for n in DETAIL_SALES_TRAFFIC_FOLDER_CANDIDATES}
-    for p in client_folder.iterdir():
-        if not p.is_dir():
-            continue
-        norm = p.name.lower().replace("and", "&").replace(" ", "")
-        if norm in target_norms:
-            return p
-
-    return None
+    p = client_folder / DETAIL_SALES_TRAFFIC_FOLDER
+    return p if p.exists() and p.is_dir() else None
 
 
 def _read_detail_sales_traffic_raw(client: str) -> pd.DataFrame:
@@ -644,7 +623,9 @@ def _read_detail_sales_traffic_raw(client: str) -> pd.DataFrame:
 
     try:
         df = pd.read_excel(fp, sheet_name=0, header=0)
-    except Exception:
+    except Exception as e:
+        st.error(f"❌ Failed to read Detail Sales & Traffic Excel for {client}: {fp.name}")
+        st.code(str(e))
         return pd.DataFrame()
 
     if df is None or df.empty:
@@ -795,45 +776,21 @@ def build_asin_grouped_display(df: pd.DataFrame) -> pd.DataFrame:
 
 def debug_detail_sales_traffic(client: str):
     with st.expander("Data source (latest file detected)", expanded=False):
+        client_folder = DATA_DIR / client
+        detail_folder = client_folder / DETAIL_SALES_TRAFFIC_FOLDER
         st.write("BASE_DIR:", str(BASE_DIR.resolve()))
         st.write("DATA_DIR:", str(DATA_DIR.resolve()))
-        st.write("DATA_DIR exists:", DATA_DIR.exists())
-
-        client_folder = DATA_DIR / client
         st.write("Client folder exists:", client_folder.exists(), str(client_folder))
+        st.write("Detail folder exists:", detail_folder.exists(), str(detail_folder))
 
-        detail_folder = _find_detail_folder(client_folder)
-        st.write("Detail folder detected:", str(detail_folder) if detail_folder else "None")
-        st.write("Tried names:", DETAIL_SALES_TRAFFIC_FOLDER_CANDIDATES)
-
-        fp = latest_report_file(detail_folder) if detail_folder else None
+        fp = latest_report_file(detail_folder) if detail_folder.exists() else None
         st.write("Latest file:", fp.name if fp else "None")
 
 
 def render_detail_sales_traffic_for_client(client: str):
-    # clearer error messages
-    client_folder = DATA_DIR / client
-    if not client_folder.exists():
-        st.error(f"Client folder not found: {client_folder}")
-        return
-
-    detail_folder = _find_detail_folder(client_folder)
-    if not detail_folder:
-        st.error(
-            "Detail Sales & Traffic folder not found.\n\n"
-            f"Expected inside: {client_folder}\n"
-            f"Tried: {', '.join(DETAIL_SALES_TRAFFIC_FOLDER_CANDIDATES)}"
-        )
-        return
-
-    fp = latest_report_file(detail_folder)
-    if not fp:
-        st.error(f"No report file found in: {detail_folder}")
-        return
-
     df = get_detail_sales_traffic_table(client)
     if df.empty:
-        st.error(f"Found file ({fp.name}) but could not parse expected columns.")
+        st.info("No Detail Sales & Traffic report found for this client yet.")
         return
 
     display = build_asin_grouped_display(df)
@@ -1037,7 +994,9 @@ def _read_any_table(fp: Path) -> pd.DataFrame:
         if fp.suffix.lower() == ".csv":
             return pd.read_csv(fp, encoding="utf-8-sig")
         return pd.read_excel(fp, sheet_name=0)
-    except Exception:
+    except Exception as e:
+        st.error(f"❌ Failed to read file: {fp.name}")
+        st.code(str(e))
         return pd.DataFrame()
 
 
@@ -1049,7 +1008,7 @@ def get_seller_health_history_for_client(client: str) -> pd.DataFrame:
 
     all_files = []
     for f in folders:
-        all_files.extend(list_report_files(f))
+        all_files.extend(list_report_files(f))  # ✅ now recursive
 
     if not all_files:
         return pd.DataFrame(columns=["Date", "Account Health", "Suppressed listings", "Seller Feedback"])
@@ -1116,6 +1075,23 @@ def get_seller_health_history_for_client(client: str) -> pd.DataFrame:
     return out
 
 
+def debug_seller_health(client: str):
+    with st.expander("Seller Health debug (folders/files found)", expanded=False):
+        client_folder = DATA_DIR / client
+        st.write("Client folder:", str(client_folder))
+        st.write("Exists:", client_folder.exists())
+
+        folders = _find_possible_seller_health_folders(client_folder)
+        st.write("Matched folders:", [f.name for f in folders])
+
+        for f in folders:
+            files = _iter_report_files(f)
+            st.write(f"Files in {f.name}:", len(files))
+            if files:
+                newest = max(files, key=lambda p: p.stat().st_mtime)
+                st.write("Newest:", newest.name)
+
+
 # =============================================================================
 # PAGES
 # =============================================================================
@@ -1125,12 +1101,6 @@ def render_client_summary():
         with mid:
             st.image(str(LOGO_PATH), width=180)
         st.write("")
-
-    # quick deployment/path check (super useful)
-    with st.expander("✅ Deployment / Path Debug", expanded=False):
-        st.write("BASE_DIR:", str(BASE_DIR.resolve()))
-        st.write("DATA_DIR:", str(DATA_DIR.resolve()))
-        st.write("DATA_DIR exists:", DATA_DIR.exists())
 
     st.header("Client Summary")
 
@@ -1232,6 +1202,9 @@ def render_client_pages():
 def render_seller_health():
     st.header("Seller Health")
     client = st.selectbox("Client", CLIENTS, index=0)
+
+    # ✅ Debug expander to verify detection
+    debug_seller_health(client)
 
     hist = get_seller_health_history_for_client(client)
     if hist.empty:
