@@ -573,7 +573,7 @@ def get_wtd_last_6_weeks_for_client(client: str, n_weeks=6, max_week_ending: Opt
 
 
 # =============================================================================
-# DETAIL SALES & TRAFFIC (Excel) — used by Listing Metrics + Client Summary table
+# DETAIL SALES & TRAFFIC (Excel) — used by Listing Metrics + Client Pages table
 # =============================================================================
 def _clean_col(c: str) -> str:
     return re.sub(r"\s+", " ", str(c).strip())
@@ -681,7 +681,7 @@ def get_detail_metrics_daily(client: str) -> pd.DataFrame:
 
 
 # =============================================================================
-# ✅ DETAIL SALES & TRAFFIC TABLE (screenshot-style)
+# DETAIL SALES & TRAFFIC TABLE (screenshot-style)
 # =============================================================================
 def _find_first_col(df: pd.DataFrame, substrings: List[str]) -> Optional[str]:
     for c in df.columns:
@@ -780,7 +780,7 @@ def build_asin_grouped_display(df: pd.DataFrame) -> pd.DataFrame:
     return out[cols]
 
 
-# ✅ AESTHETICS: remove the "Data source" debug expander everywhere
+# ✅ removed debug expander everywhere
 def debug_detail_sales_traffic(client: str):
     return
 
@@ -794,8 +794,6 @@ def render_detail_sales_traffic_for_client(client: str):
     display = build_asin_grouped_display(df)
 
     # Safer than Styler.hide(...) across pandas versions:
-    # - compute which rows are ASIN headers
-    # - drop __row_type before styling/display
     asin_mask = display["__row_type"].astype(str).eq("asin")
     display_clean = display.drop(columns=["__row_type"])
 
@@ -1135,26 +1133,13 @@ def render_client_summary():
             st.dataframe(style_percent_columns(wtd_df, ["Year over Year"]), use_container_width=True)
         st.write("")
 
-    st.divider()
-    st.header("DETAIL SALES & TRAFFIC")
-
-    # ✅ AESTHETICS: client dropdown in left sidebar (not top)
-    client_for_detail = st.sidebar.selectbox(
-        "Detail Sales & Traffic Client",
-        CLIENTS,
-        index=0,
-        key="sidebar_client_detail_summary",
-    )
-
-    debug_detail_sales_traffic(client_for_detail)  # does nothing now
-    render_detail_sales_traffic_for_client(client_for_detail)
-
 
 def render_client_pages():
-    st.header("Client Pages")
-
-    # ✅ AESTHETICS: client dropdown in left sidebar (not top)
+    # ✅ client dropdown in left sidebar
     client = st.sidebar.selectbox("Client", CLIENTS, index=0, key="sidebar_client_pages")
+
+    # ✅ title includes selected client
+    st.header(f"Client Page: {client}")
 
     c1, c2 = st.columns(2)
     with c1:
@@ -1184,17 +1169,17 @@ def render_client_pages():
     else:
         st.dataframe(style_percent_columns(wtd_df, ["Year over Year"]), use_container_width=True)
 
-    # ✅ Add Detail Sales & Traffic table under WTD (as requested earlier)
+    # ✅ Detail Sales & Traffic stays on Client Page only
     st.divider()
     st.subheader("Detail Sales & Traffic")
     render_detail_sales_traffic_for_client(client)
 
 
 def render_seller_health():
-    st.header("Seller Health")
-
-    # ✅ AESTHETICS: client dropdown in left sidebar (not top)
+    # ✅ client dropdown in left sidebar
     client = st.sidebar.selectbox("Client", CLIENTS, index=0, key="sidebar_client_seller")
+
+    st.header("Seller Health")
 
     hist = get_seller_health_history_for_client(client)
     if hist.empty:
@@ -1204,7 +1189,12 @@ def render_seller_health():
         )
         return
 
-    st.dataframe(hist, use_container_width=True, hide_index=True)
+    # ✅ center-align seller health table cells
+    st.dataframe(
+        hist.style.set_properties(**{"text-align": "center"}),
+        use_container_width=True,
+        hide_index=True,
+    )
 
 
 # =============================================================================
