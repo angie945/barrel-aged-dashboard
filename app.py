@@ -75,32 +75,27 @@ _date_re3 = re.compile(r"(\d{1,2}/\d{1,2}/\d{2,4})")
 
 
 # =============================================================================
-# BASIC HELPERS (✅ UPDATED: recursive file discovery)
+# BASIC HELPERS
 # =============================================================================
-def _iter_report_files(folder: Path) -> List[Path]:
-    """
-    ✅ Find report files recursively (handles subfolders).
-    Streamlit Cloud repo often has extra nesting; this prevents false 'no file found'.
-    """
+def latest_report_file(folder: Path):
     if not folder or not folder.exists():
-        return []
+        return None
     files = [
         f
-        for f in folder.rglob("*")
-        if f.is_file()
-        and f.suffix.lower() in REPORT_EXTS
-        and not f.name.startswith("~$")
+        for f in folder.iterdir()
+        if f.is_file() and f.suffix.lower() in REPORT_EXTS and not f.name.startswith("~$")
     ]
-    return files
-
-
-def latest_report_file(folder: Path):
-    files = _iter_report_files(folder)
     return max(files, key=lambda f: f.stat().st_mtime) if files else None
 
 
 def list_report_files(folder: Path) -> List[Path]:
-    files = _iter_report_files(folder)
+    if not folder or not folder.exists():
+        return []
+    files = [
+        f
+        for f in folder.iterdir()
+        if f.is_file() and f.suffix.lower() in REPORT_EXTS and not f.name.startswith("~$")
+    ]
     return sorted(files, key=lambda f: f.stat().st_mtime)
 
 
@@ -623,9 +618,7 @@ def _read_detail_sales_traffic_raw(client: str) -> pd.DataFrame:
 
     try:
         df = pd.read_excel(fp, sheet_name=0, header=0)
-    except Exception as e:
-        st.error(f"❌ Failed to read Detail Sales & Traffic Excel for {client}: {fp.name}")
-        st.code(str(e))
+    except Exception:
         return pd.DataFrame()
 
     if df is None or df.empty:
@@ -790,6 +783,42 @@ def debug_detail_sales_traffic(client: str):
 def render_detail_sales_traffic_for_client(client: str):
     df = get_detail_sales_traffic_table(client)
     if df.empty:
+        st.info("No Detail Sales & Traffic report found for this client yet.")
+        return
+
+    display = build_asin_grouped_display(df)
+
+    def style_rows(row):
+        if row.get("__row_type") == "asin":
+            return [
+                "font-weight: 700; border-top: 2px solid #2f5f78; background: #ffffff;"
+                if c != "__row_type"
+                else ""
+                for c in row.index
+            ]
+        return ["" for _ in row.index]
+
+    styler = (
+        display.style
+        .apply(style_rows, axis=1)
+        .set_properties(subset=["ASIN"], **{"white-space": "pre"})
+        .hide(columns=["__row_type"])
+    )
+
+    st.dataframe(styler, use_container_width=True, hide_index=True)
+
+
+# =============================================================================
+# ✅ NEW: reusable section (so Client Pages can show the same table under WTD)
+# =============================================================================
+def render_detail_sales_traffic_section(client: str, show_debug: bool = False):
+    st.subheader("DETAIL SALES & TRAFFIC")
+
+    if show_debug:
+        debug_detail_sales_traffic(client)
+
+    df = get_detail_sales_traffic_table(client)
+    if df is None or df.empty:
         st.info("No Detail Sales & Traffic report found for this client yet.")
         return
 
@@ -994,9 +1023,7 @@ def _read_any_table(fp: Path) -> pd.DataFrame:
         if fp.suffix.lower() == ".csv":
             return pd.read_csv(fp, encoding="utf-8-sig")
         return pd.read_excel(fp, sheet_name=0)
-    except Exception as e:
-        st.error(f"❌ Failed to read file: {fp.name}")
-        st.code(str(e))
+    except Exception:
         return pd.DataFrame()
 
 
@@ -1008,7 +1035,7 @@ def get_seller_health_history_for_client(client: str) -> pd.DataFrame:
 
     all_files = []
     for f in folders:
-        all_files.extend(list_report_files(f))  # ✅ now recursive
+        all_files.extend(list_report_files(f))
 
     if not all_files:
         return pd.DataFrame(columns=["Date", "Account Health", "Suppressed listings", "Seller Feedback"])
@@ -1073,23 +1100,6 @@ def get_seller_health_history_for_client(client: str) -> pd.DataFrame:
     out = out.sort_values("Date", ascending=True).drop_duplicates(subset=["Date"]).reset_index(drop=True)
     out["Date"] = out["Date"].dt.strftime("%Y-%m-%d")
     return out
-
-
-def debug_seller_health(client: str):
-    with st.expander("Seller Health debug (folders/files found)", expanded=False):
-        client_folder = DATA_DIR / client
-        st.write("Client folder:", str(client_folder))
-        st.write("Exists:", client_folder.exists())
-
-        folders = _find_possible_seller_health_folders(client_folder)
-        st.write("Matched folders:", [f.name for f in folders])
-
-        for f in folders:
-            files = _iter_report_files(f)
-            st.write(f"Files in {f.name}:", len(files))
-            if files:
-                newest = max(files, key=lambda p: p.stat().st_mtime)
-                st.write("Newest:", newest.name)
 
 
 # =============================================================================
@@ -1198,13 +1208,14 @@ def render_client_pages():
     else:
         st.dataframe(style_percent_columns(wtd_df, ["Year over Year"]), use_container_width=True)
 
+    # ✅ SHOW DETAIL SALES & TRAFFIC UNDER WTD (this is what you asked for)
+    st.divider()
+    render_detail_sales_traffic_section(client, show_debug=False)
+
 
 def render_seller_health():
     st.header("Seller Health")
     client = st.selectbox("Client", CLIENTS, index=0)
-
-    # ✅ Debug expander to verify detection
-    debug_seller_health(client)
 
     hist = get_seller_health_history_for_client(client)
     if hist.empty:
@@ -1410,6 +1421,7 @@ def build_static_clickable_dashboard_html() -> str:
 
     logo_html = ""
     if LOGO_PATH.exists():
+        # Note: for downloaded HTML this is fine; for hosted HTML you'd want base64.
         logo_html = f"<img class='logo' src='{_html_escape(str(LOGO_PATH))}' />"
 
     html = f"""
